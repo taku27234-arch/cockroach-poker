@@ -1,0 +1,191 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ゴキブリポーカー</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;background:#163b2b;color:white;
+  font-family:sans-serif;text-align:center;padding:20px
+}
+h1{color:#ffe58a}
+button{
+  padding:14px 20px;border:0;border-radius:12px;
+  font-size:17px;background:#ffe58a;color:#193b2b;
+  font-weight:bold;margin:8px;cursor:pointer
+}
+select,input{padding:12px;border-radius:8px;font-size:18px}
+.card{
+  display:inline-block;background:white;color:#222;
+  border-radius:12px;padding:18px 10px;margin:5px;
+  width:95px;font-size:30px;box-shadow:0 3px 5px #0005
+}
+.card small{display:block;font-size:12px}
+.hidden{display:none}
+#message{font-size:20px;margin:20px}
+</style>
+</head>
+<body>
+
+<h1>🪳 ゴキブリポーカー</h1>
+
+<div id="setup">
+  <p>プレイ人数を選んでね</p>
+  <select id="人数">
+    <option value="2">2人</option>
+    <option value="3">3人</option>
+    <option value="4">4人</option>
+    <option value="5">5人</option>
+    <option value="6">6人</option>
+  </select>
+  <br>
+  <button onclick="startGame()">ゲーム開始！</button>
+</div>
+
+<div id="game" class="hidden">
+  <h2 id="turn"></h2>
+  <div id="message"></div>
+  <div id="cards"></div>
+  <div id="actions"></div>
+</div>
+
+<script>
+const bugs=[
+ ["🪳","ゴキブリ"],["🕷️","クモ"],
+ ["🦟","蚊"],["🪰","ハエ"],
+ ["🐸","カエル"],["🐀","ネズミ"],
+ ["🦂","サソリ"],["🦎","トカゲ"]
+];
+
+let players=[],current=0,phase=0;
+let selected=null,target=null,claimed=null;
+let deck=[],pending=null;
+
+function startGame(){
+ const n=Number(document.getElementById("人数").value);
+ players=Array.from({length:n},(_,i)=>({
+   name:"プレイヤー"+(i+1),hand:[],board:[],
+   alive:true
+ }));
+ deck=[];
+ bugs.forEach((b,i)=>{
+   for(let j=0;j<8;j++)deck.push(i);
+ });
+ deck.sort(()=>Math.random()-.5);
+ deck.forEach((c,i)=>players[i%n].hand.push(c));
+
+ document.getElementById("setup").classList.add("hidden");
+ document.getElementById("game").classList.remove("hidden");
+ current=0;phase=0;render();
+}
+
+function alive(){
+ return players.map((p,i)=>p.alive?i:-1).filter(i=>i>=0);
+}
+
+function render(){
+ const p=players[current];
+ document.getElementById("turn").textContent=
+   p.name+" の番（手札 "+p.hand.length+"枚）";
+ document.getElementById("message").textContent=
+   phase===0?"渡すカードを選んでね":"相手のカードを判定してね";
+ document.getElementById("cards").innerHTML="";
+ document.getElementById("actions").innerHTML="";
+
+ if(phase===0){
+  p.hand.forEach((c,i)=>{
+   let b=document.createElement("button");
+   b.className="card";
+   b.innerHTML=bugs[c][0]+"<small>"+bugs[c][1]+"</small>";
+   b.onclick=()=>chooseCard(i);
+   document.getElementById("cards").appendChild(b);
+  });
+ }else if(phase===1){
+  players.forEach((q,i)=>{
+   if(i!==current&&q.alive){
+    let b=document.createElement("button");
+    b.textContent=q.name;
+    b.onclick=()=>chooseTarget(i);
+    document.getElementById("actions").appendChild(b);
+   }
+  });
+ }
+}
+
+function chooseCard(i){
+ selected=i;phase=1;render();
+}
+
+function chooseTarget(i){
+ target=i;
+ const c=players[current].hand[selected];
+ pending={card:c,from:current,to:i};
+ phase=2;
+ document.getElementById("turn").textContent=
+   players[target].name+" にカードを渡します";
+ document.getElementById("message").textContent="虫の種類を宣言！";
+ document.getElementById("cards").innerHTML="";
+ document.getElementById("actions").innerHTML="";
+ bugs.forEach((b,k)=>{
+  let btn=document.createElement("button");
+  btn.textContent=b[0]+" "+b[1];
+  btn.onclick=()=>declare(k);
+  document.getElementById("actions").appendChild(btn);
+ });
+}
+
+function declare(k){
+ claimed=k;
+ document.getElementById("turn").textContent=
+   players[target].name+" の判定";
+ document.getElementById("message").textContent=
+   players[current].name+" が「"+bugs[k][1]+"」と宣言";
+ document.getElementById("actions").innerHTML="";
+ ["本当","嘘"].forEach((v,i)=>{
+  let b=document.createElement("button");
+  b.textContent=v;
+  b.onclick=()=>judge(i===0);
+  document.getElementById("actions").appendChild(b);
+ });
+}
+
+function judge(isTrue){
+ const actual=pending.card;
+ const correct=(actual===claimed)===isTrue;
+ const loser=correct?pending.from:pending.to;
+ const receiver=players[loser];
+
+ receiver.board.push(actual);
+
+ // 同じ虫が4枚で脱落
+ const counts={};
+ receiver.board.forEach(c=>counts[c]=(counts[c]||0)+1);
+ const four=Object.keys(counts).find(c=>counts[c]>=4);
+
+ if(four!==undefined){
+  receiver.alive=false;
+  alert(receiver.name+" は "+bugs[four][1]+" が4枚！脱落！");
+ }
+
+ if(receiver.hand.length===0&&receiver.alive){
+  receiver.alive=false;
+  alert(receiver.name+" は手札がなくなり脱落！");
+ }
+
+ const a=alive();
+ if(a.length===1){
+  alert(players[a[0]].name+" の勝利！");
+  location.reload();return;
+ }
+
+ current=correct?pending.from:pending.to;
+ if(!players[current].alive)current=a[0];
+
+ pending=null;selected=null;phase=0;render();
+}
+</script>
+</body>
+</html>
